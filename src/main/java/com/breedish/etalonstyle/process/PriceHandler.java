@@ -133,9 +133,6 @@ public class PriceHandler implements InitializingBean {
         return configs;
     }
 
-
-    //TARTSVST
-
     private Connection connect(File dbFile) throws Exception {
         return DriverManager.getConnection(String.format("jdbc:firebirdsql:localhost:%s", dbFile.getAbsolutePath()), "SYSDBA", "masterkey");
     }
