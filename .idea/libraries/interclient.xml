@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="interclient">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/Downloads/interclient.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

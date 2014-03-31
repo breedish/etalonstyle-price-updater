@@ -1,0 +1,18 @@
+<component name="libraryTable">
+  <library name="org.firebirdsql.jdbc:jaybird-jdk17:2.2.4" type="repository">
+    <properties maven-id="org.firebirdsql.jdbc:jaybird-jdk17:2.2.4" />
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/firebirdsql/jdbc/jaybird-jdk17/2.2.4/jaybird-jdk17-2.2.4.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/javax/resource/connector-api/1.5/connector-api-1.5.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/antlr/antlr-runtime/3.4/antlr-runtime-3.4.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/org/antlr/stringtemplate/3.2.1/stringtemplate-3.2.1.jar!/" />
+      <root url="jar://$MAVEN_REPOSITORY$/antlr/antlr/2.7.7/antlr-2.7.7.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/org/firebirdsql/jdbc/jaybird-jdk17/2.2.4/jaybird-jdk17-2.2.4-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/firebirdsql/jdbc/jaybird-jdk17/2.2.4/jaybird-jdk17-2.2.4-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>
