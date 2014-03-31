@@ -1,0 +1,2 @@
+etalonstyle-price-updater
+=========================
