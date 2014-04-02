@@ -18,9 +18,13 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -37,8 +41,13 @@ public class PriceHandler implements InitializingBean {
 
     private static final Logger LOG = LoggerFactory.getLogger(PriceHandler.class);
 
+    private static final MathContext MATH_CONTEXT = new MathContext(2, RoundingMode.HALF_UP);
+
     @Value("/price-sheets.csv")
     private String config;
+
+    @Value("${vat}")
+    private Double newVat;
 
     @Autowired
     private MessageSource messageSource;
@@ -77,6 +86,8 @@ public class PriceHandler implements InitializingBean {
                             LOG.error("Unable to open '{}' sheet in excel", item[0]);
                             continue;
                         }
+
+                        LOG.info("Processing '{}' data set", item[0]);
                         for (int i = 0; i < sheet.getLastRowNum() + 10; i++) {
                             Row row = sheet.getRow(i);
                             if (row == null) {
@@ -88,14 +99,14 @@ public class PriceHandler implements InitializingBean {
                             }
 
                             long productId = (long) productIdCell.getNumericCellValue();
-                            double price = row.getCell(Integer.valueOf(item[1])).getNumericCellValue();
-                            double percentage = row.getCell(Integer.valueOf(item[2])).getNumericCellValue();
+                            double oldPIce = row.getCell(Integer.valueOf(item[1])).getNumericCellValue();
+                            double oldVat = row.getCell(Integer.valueOf(item[2])).getNumericCellValue();
 
-                            preparedStatement.setDouble(1, (price * 1.2)/(1 + percentage));
+                            preparedStatement.setDouble(1, calculatePrice(oldPIce, oldVat, newVat));
                             preparedStatement.setString(2, String.valueOf(productId));
                             preparedStatement.addBatch();
 
-                            LOG.info("{}: {} -> {} {}", new Number[]{i, productId, price, percentage});
+                            LOG.info("{}: {} -> {} {}", new Number[]{i, productId, oldPIce, oldVat});
                         }
                         int[] updated = preparedStatement.executeBatch();
                         for (int e : updated) totalUpdated += e;
@@ -117,6 +128,10 @@ public class PriceHandler implements InitializingBean {
         listener.getUpdateComponent().textProperty().bind(task.messageProperty());
 
         service.submit(task);
+    }
+
+    private double calculatePrice(double oldPrice, double oldVat, double newVat) {
+        return new BigDecimal(oldPrice * (1 + newVat) / (1 + oldVat), MATH_CONTEXT).doubleValue();
     }
 
     private List<String> getSheetConfig() {
