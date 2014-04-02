@@ -74,7 +74,7 @@ public class PriceHandler implements InitializingBean {
 
                         Sheet sheet = book.getSheet(item[0]);
                         if (sheet == null) {
-                            LOG.error("Unable to open 'item[0]' sheet in excel");
+                            LOG.error("Unable to open '{}' sheet in excel", item[0]);
                             continue;
                         }
                         for (int i = 0; i < sheet.getLastRowNum() + 10; i++) {
@@ -91,7 +91,7 @@ public class PriceHandler implements InitializingBean {
                             double price = row.getCell(Integer.valueOf(item[1])).getNumericCellValue();
                             double percentage = row.getCell(Integer.valueOf(item[2])).getNumericCellValue();
 
-                            preparedStatement.setDouble(1, price*1.2/(1+percentage));
+                            preparedStatement.setDouble(1, (price * 1.2)/(1 + percentage));
                             preparedStatement.setString(2, String.valueOf(productId));
                             preparedStatement.addBatch();
 
