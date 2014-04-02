@@ -35,7 +35,7 @@ public class PriceUpdateApp extends Application {
         stage.setTitle(String.format("Price Updater v%s", screensConfiguration.getAppVersion()));
         stage.setScene(scene);
         stage.setResizable(false);
-        stage.getIcons().add(new Image(PriceUpdateApp.class.getResourceAsStream("/images/icon`.png")));
+        stage.getIcons().add(new Image(PriceUpdateApp.class.getResourceAsStream("/images/icon.png")));
         stage.setOnCloseRequest(new EventHandler<WindowEvent>() {
             @Override
             public void handle(WindowEvent event) {
