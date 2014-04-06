@@ -1,11 +1,7 @@
 package com.breedish.etalonstyle.process;
 
 import javafx.concurrent.Task;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.usermodel.*;
 import org.javatuples.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +12,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -35,8 +30,6 @@ import java.util.concurrent.Executors;
 public class PriceHandler implements InitializingBean {
 
     private static final Logger LOG = LoggerFactory.getLogger(PriceHandler.class);
-
-    private static final MathContext MATH_CONTEXT = new MathContext(3, RoundingMode.HALF_UP);
 
     @Autowired
     private MessageSource messageSource;
@@ -98,14 +91,14 @@ public class PriceHandler implements InitializingBean {
                             if (oldPrice == null) {
                                 continue;
                             }
-                            double newPrice = calculatePrice(priceValue, oldVat, options.getNewVat());
-                            double newMassPrice = calculateMassPrice(newPrice, oldPrice.getValue1());
+                            double newPrice = scalePrice(calculatePrice(priceValue, oldVat, options.getNewVat()));
+                            double newMassPrice = scalePrice(calculateMassPrice(newPrice, oldPrice.getValue1()));
                             updatePriceStatement.setDouble(1, newPrice);
                             updatePriceStatement.setDouble(2, newMassPrice);
                             updatePriceStatement.setString(3, String.valueOf(productId));
                             updatePriceStatement.addBatch();
 
-                            LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, oldPrice.getValue0(), oldVat, newPrice, newMassPrice});
+                            LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, priceValue, oldVat, newPrice, newMassPrice});
                         }
                         int[] updated = updatePriceStatement.executeBatch();
                         for (int e : updated) totalUpdated += e;
@@ -129,16 +122,20 @@ public class PriceHandler implements InitializingBean {
         service.submit(task);
     }
 
-    private double calculatePrice(double newPrice, double oldVat, double newVat) {
-        return BigDecimal.valueOf(newPrice).multiply(BigDecimal.valueOf(1 + newVat)).divide(BigDecimal.valueOf(1 + oldVat), MATH_CONTEXT).doubleValue();
+    private double scalePrice(BigDecimal decimal) {
+        return decimal.setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 
-    private double calculateMassPrice(double newPrice, double aMass) {
+    private BigDecimal calculatePrice(double newPrice, double oldVat, double newVat) {
+        return BigDecimal.valueOf(newPrice).multiply(BigDecimal.valueOf(1 + newVat)).divide(BigDecimal.valueOf(1 + oldVat), RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal calculateMassPrice(double newPrice, double aMass) {
         if (aMass == 0) {
-            return aMass;
+            return BigDecimal.ZERO;
         }
 
-        return BigDecimal.valueOf(newPrice).divide(BigDecimal.valueOf(aMass), MATH_CONTEXT).doubleValue();
+        return BigDecimal.valueOf(newPrice).divide(BigDecimal.valueOf(aMass), BigDecimal.ROUND_HALF_UP);
     }
 
     private Pair<Double, Double> getOldPrice(PreparedStatement statement, long productId) throws Exception {
