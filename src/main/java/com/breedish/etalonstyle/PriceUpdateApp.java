@@ -30,7 +30,7 @@ public class PriceUpdateApp extends Application {
 
         ScreensConfiguration screensConfiguration = APP_CONTEXT.getBean(ScreensConfiguration.class);
 
-        Scene scene = new Scene((Parent) mainController.getView(), 710, 240);
+        Scene scene = new Scene((Parent) mainController.getView(), 720, 360);
         scene.getStylesheets().add(screensConfiguration.getStyleSheet());
         stage.setTitle(String.format("Price Updater v%s", screensConfiguration.getAppVersion()));
         stage.setScene(scene);

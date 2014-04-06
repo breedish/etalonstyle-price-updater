@@ -6,27 +6,22 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.javatuples.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.stereotype.Service;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
-import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.List;
+import java.sql.ResultSet;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,13 +36,7 @@ public class PriceHandler implements InitializingBean {
 
     private static final Logger LOG = LoggerFactory.getLogger(PriceHandler.class);
 
-    private static final MathContext MATH_CONTEXT = new MathContext(2, RoundingMode.HALF_UP);
-
-    @Value("/price-sheets.csv")
-    private String config;
-
-    @Value("${vat}")
-    private Double newVat;
+    private static final MathContext MATH_CONTEXT = new MathContext(3, RoundingMode.HALF_UP);
 
     @Autowired
     private MessageSource messageSource;
@@ -59,56 +48,66 @@ public class PriceHandler implements InitializingBean {
         Class.forName("org.firebirdsql.jdbc.FBDriver").newInstance();
     }
 
-    public void process(final File priceFile, final File dbFile, final ProgressListener listener) {
+    public void process(final UpdateOptions options, final File priceFile, final File dbFile, final ProgressListener listener) {
 
         Task<Integer> task = new Task<Integer>() {
             @Override
             protected Integer call() throws Exception {
-                try {
+                try(final Connection dbConnection = connect(dbFile)) {
                     final Workbook book = WorkbookFactory.create(priceFile);
-                    final Connection dbConnection = connect(dbFile);
                     dbConnection.setAutoCommit(false);
 
-                    PreparedStatement preparedStatement = dbConnection.prepareStatement("UPDATE TARTSVST SET CLPRC=? WHERE ASKL1=?");
-
-                    List<String> configs = getSheetConfig();
+                    PreparedStatement updatePriceStatement = dbConnection.prepareStatement("UPDATE TARTSVST SET CLPRC=?, CLPRV=? WHERE ASKL1=?");
+                    PreparedStatement getPriceStatement = dbConnection.prepareStatement(
+                        "SELECT TARTSVST.CLPRC,TARTIKLS.AMASS, TARTSVST.ASKL1 FROM TARTSVST LEFT OUTER JOIN TARTIKLS ON TARTIKLS.ANUMB=TARTSVST.ANUMB WHERE TARTSVST.ASKL1=?");
 
                     int processed = 0;
                     int totalUpdated = 0;
-                    for (String sheetConfig : configs) {
-                        String[] item = sheetConfig.split(",");
+                    for (UpdateOptions.PriceType priceType : options.getPriceTypes()) {
 
-                        updateProgress(++processed, configs.size());
-                        updateMessage(messageSource.getMessage("ui.processing", new String[]{item[0]}, Locale.getDefault()));
-
-                        Sheet sheet = book.getSheet(item[0]);
-                        if (sheet == null) {
-                            LOG.error("Unable to open '{}' sheet in excel", item[0]);
+                        updateProgress(++processed, options.getPriceTypes().size());
+                        if (!priceType.isUpdate()) {
+                            LOG.info("Price {} is skipped", priceType.getName());
                             continue;
                         }
 
-                        LOG.info("Processing '{}' data set", item[0]);
+                        updateMessage(messageSource.getMessage("ui.processing", new String[]{priceType.getName()}, Locale.getDefault()));
+
+                        Sheet sheet = book.getSheet(priceType.getName());
+                        if (sheet == null) {
+                            LOG.error("Unable to open '{}' sheet in excel", priceType.getName());
+                            continue;
+                        }
+
+                        LOG.info("Processing '{}' data set", priceType.getName());
                         for (int i = 0; i < sheet.getLastRowNum() + 10; i++) {
                             Row row = sheet.getRow(i);
                             if (row == null) {
                                 continue;
                             }
-                            Cell productIdCell = row.getCell(Integer.valueOf(item[3]));
+                            Cell productIdCell = row.getCell(priceType.getCodeColumn());
                             if (productIdCell == null || productIdCell.getCellType() != Cell.CELL_TYPE_NUMERIC) {
                                 continue;
                             }
 
                             long productId = (long) productIdCell.getNumericCellValue();
-                            double oldPIce = row.getCell(Integer.valueOf(item[1])).getNumericCellValue();
-                            double oldVat = row.getCell(Integer.valueOf(item[2])).getNumericCellValue();
+                            double priceValue = row.getCell(priceType.getPriceColumn()).getNumericCellValue();
+                            double oldVat = row.getCell(priceType.getVatColumn()).getNumericCellValue();
 
-                            preparedStatement.setDouble(1, calculatePrice(oldPIce, oldVat, newVat));
-                            preparedStatement.setString(2, String.valueOf(productId));
-                            preparedStatement.addBatch();
+                            Pair<Double, Double> oldPrice = getOldPrice(getPriceStatement, productId);
+                            if (oldPrice == null) {
+                                continue;
+                            }
+                            double newPrice = calculatePrice(priceValue, oldVat, options.getNewVat());
+                            double newMassPrice = calculateMassPrice(newPrice, oldPrice.getValue1());
+                            updatePriceStatement.setDouble(1, newPrice);
+                            updatePriceStatement.setDouble(2, newMassPrice);
+                            updatePriceStatement.setString(3, String.valueOf(productId));
+                            updatePriceStatement.addBatch();
 
-                            LOG.info("{}: {} -> {} {}", new Number[]{i, productId, oldPIce, oldVat});
+                            LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, oldPrice.getValue0(), oldVat, newPrice, newMassPrice});
                         }
-                        int[] updated = preparedStatement.executeBatch();
+                        int[] updated = updatePriceStatement.executeBatch();
                         for (int e : updated) totalUpdated += e;
                         dbConnection.commit();
                     }
@@ -130,22 +129,25 @@ public class PriceHandler implements InitializingBean {
         service.submit(task);
     }
 
-    private double calculatePrice(double oldPrice, double oldVat, double newVat) {
-        return new BigDecimal(oldPrice * (1 + newVat) / (1 + oldVat), MATH_CONTEXT).doubleValue();
+    private double calculatePrice(double newPrice, double oldVat, double newVat) {
+        return BigDecimal.valueOf(newPrice).multiply(BigDecimal.valueOf(1 + newVat)).divide(BigDecimal.valueOf(1 + oldVat), MATH_CONTEXT).doubleValue();
     }
 
-    private List<String> getSheetConfig() {
-        List<String> configs = new ArrayList<>();
-
-        try (final BufferedReader configStream = new BufferedReader(new InputStreamReader(PriceHandler.class.getResourceAsStream(config)))) {
-            String configLine;
-            while ((configLine = configStream.readLine()) != null) {
-                configs.add(configLine);
-            }
-        } catch (IOException e) {
-            LOG.error("Error while opening sheets-config file", e);
+    private double calculateMassPrice(double newPrice, double aMass) {
+        if (aMass == 0) {
+            return aMass;
         }
-        return configs;
+
+        return BigDecimal.valueOf(newPrice).divide(BigDecimal.valueOf(aMass), MATH_CONTEXT).doubleValue();
+    }
+
+    private Pair<Double, Double> getOldPrice(PreparedStatement statement, long productId) throws Exception {
+        statement.setString(1, String.valueOf(productId));
+        ResultSet resultSet = statement.executeQuery();
+        if (!resultSet.next()) {
+            return null;
+        }
+        return new Pair<>(resultSet.getDouble(1), resultSet.getDouble(2));
     }
 
     private Connection connect(File dbFile) throws Exception {

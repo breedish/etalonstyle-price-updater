@@ -2,13 +2,18 @@ package com.breedish.etalonstyle.ui;
 
 import com.breedish.etalonstyle.process.PriceHandler;
 import com.breedish.etalonstyle.process.ProgressListener;
+import com.breedish.etalonstyle.process.UpdateOptions;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TextField;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import org.slf4j.Logger;
@@ -49,8 +54,14 @@ public class MainFormController extends AbstractController {
     @FXML
     private Text progressDetails;
 
+    @FXML
+    private FlowPane optionsPane;
+
     @Autowired
     private PriceHandler priceHandler;
+
+    @Autowired
+    private UpdateOptions options;
 
     @Autowired
     private MessageSource messageSource;
@@ -58,6 +69,22 @@ public class MainFormController extends AbstractController {
     public void initialize() {
         bindOnChooseEvent(priceButton, priceFile, Arrays.asList("*.xls", "*.xlsx"));
         bindOnChooseEvent(dbButton, dbFile, Arrays.asList("*.gdb"));
+        bindUpdateOptions(options);
+    }
+
+    private void bindUpdateOptions(UpdateOptions options) {
+        for (final UpdateOptions.PriceType priceType : options.getPriceTypes()) {
+            CheckBox checkBox = new CheckBox(priceType.getName());
+            checkBox.setSelected(true);
+            checkBox.setMinWidth(100);
+            checkBox.selectedProperty().addListener(new ChangeListener<Boolean>() {
+                @Override
+                public void changed(ObservableValue<? extends Boolean> observableValue, Boolean from, Boolean to) {
+                    priceType.setUpdate(to);
+                }
+            });
+            optionsPane.getChildren().addAll(checkBox);
+        }
     }
 
     private void bindOnChooseEvent(final Control control, final TextField textField, final List<String> filter) {
@@ -87,7 +114,7 @@ public class MainFormController extends AbstractController {
         LOG.info("Update Price {} from DB {}", dbFile.getText(), priceFile.getText());
 
         updateProgress.setDisable(false);
-        priceHandler.process(new File(priceFile.getText()), new File(dbFile.getText()), new ProgressListener(progressDetails, updateProgress));
+        priceHandler.process(options, new File(priceFile.getText()), new File(dbFile.getText()), new ProgressListener(progressDetails, updateProgress));
     }
 
 }

@@ -2,28 +2,40 @@
 
 <?scenebuilder-classpath-element ../../../../../../.m2/repository/com/miglayout/miglayout-core/4.2/miglayout-core-4.2.jar?>
 <?scenebuilder-classpath-element ../../../../../../.m2/repository/com/miglayout/miglayout-javafx/4.2/miglayout-javafx-4.2.jar?>
-
+<?import java.lang.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.control.Accordion?>
 <?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ProgressBar?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TitledPane?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.layout.FlowPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.text.*?>
 <?import javafx.scene.text.Text?>
+<?import org.tbee.javafx.scene.layout.fxml.*?>
 <?import org.tbee.javafx.scene.layout.fxml.MigPane?>
+
 <MigPane fx:id="rootPane" cols="[left][left, :370:][left]" layout="insets 20" styleClass="main-panel"
          xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/2.2"
          fx:controller="com.breedish.etalonstyle.ui.MainFormController">
-
     <Label text="%form.file.price.path" MigPane.cc="span3, wrap"/>
     <TextField fx:id="priceFile" styleClass="text-field" MigPane.cc="span 2, width :500:"/>
-    <Button text="%form.choose.file.excel" fx:id="priceButton" styleClass="button" MigPane.cc="wrap, width :200:"/>
+    <Button fx:id="priceButton" styleClass="button" text="%form.choose.file.excel" MigPane.cc="wrap, width :200:"/>
 
     <Label text="%form.file.db.path" MigPane.cc="span 3, wrap"/>
     <TextField fx:id="dbFile" styleClass="text-field" MigPane.cc="span 2, width :500:"/>
     <Button fx:id="dbButton" styleClass="button" text="%form.choose.file.db" MigPane.cc="wrap, width :200:"/>
 
-    <Label text="%updateProgress" textAlignment="right" MigPane.cc="growx, width 130!"/>
-    <Text text="" fx:id="progressDetails" textAlignment="left" MigPane.cc="wrap"/>
-    <ProgressBar fx:id="updateProgress" MigPane.cc="span 3, wrap 2, height 30!, grow, width 680!"/>
+    <Label text="%update.options" MigPane.cc="span 3, grow, width 680:680:680, wrap"/>
+    <FlowPane styleClass="flowpane" fx:id="optionsPane" hgap="5.0" prefWidth="708.0" vgap="5.0" MigPane.cc="span 3, wrap">
+    </FlowPane>
 
+    <Label text="%updateProgress" MigPane.cc="gaptop 5, growx, width 130!" alignment="TOP_CENTER" textAlignment="CENTER"/>
+    <Text fx:id="progressDetails" MigPane.cc="gaptop 5, wrap"/>
+    <ProgressBar fx:id="updateProgress" MigPane.cc="span 3, wrap 2, height 30!, grow, width 680!"/>
     <Button onAction="#update" styleClass="button" text="%form.run-update" MigPane.cc="span 3, height 50!, gaptop 10, growx, growy"/>
 </MigPane>
