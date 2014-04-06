@@ -36,6 +36,6 @@
 
     <Label text="%updateProgress" MigPane.cc="gaptop 5, growx, width 130!" alignment="TOP_CENTER" textAlignment="CENTER"/>
     <Text fx:id="progressDetails" MigPane.cc="gaptop 5, wrap"/>
-    <ProgressBar fx:id="updateProgress" MigPane.cc="span 3, wrap 2, height 30!, grow, width 680!"/>
+    <ProgressBar fx:id="updateProgress" MigPane.cc="span 3, wrap 2, height 30!, grow, width 690!"/>
     <Button onAction="#update" styleClass="button" text="%form.run-update" MigPane.cc="span 3, height 50!, gaptop 10, growx, growy"/>
 </MigPane>
