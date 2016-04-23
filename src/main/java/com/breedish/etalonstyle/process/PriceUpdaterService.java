@@ -26,6 +26,7 @@ import java.sql.ResultSet;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Service for {@link com.breedish.etalonstyle.PriceUpdateApp}.
@@ -46,9 +47,12 @@ public class PriceUpdaterService {
     }
 
     public void process(final UpdateOptions options, final File priceFile, final File dbFile,
-        final Text updateComponent, final ProgressBar progressBar) {
+                        final Text updateComponent, final ProgressBar progressBar) {
 
         Task<Integer> task = new Task<Integer>() {
+            AtomicInteger processed = new AtomicInteger(0);
+            AtomicInteger totalUpdated = new AtomicInteger(0);
+
             @Override
             protected Integer call() throws Exception {
                 try (final Connection dbConnection = connect(dbFile)) {
@@ -59,56 +63,8 @@ public class PriceUpdaterService {
                     PreparedStatement getPriceStatement = dbConnection.prepareStatement(
                         "SELECT TARTSVST.CLPRC,TARTIKLS.AMASS, TARTSVST.ASKL1 FROM TARTSVST LEFT OUTER JOIN TARTIKLS ON TARTIKLS.ANUMB=TARTSVST.ANUMB WHERE TARTSVST.ASKL1=?");
 
-                    int processed = 0;
-                    int totalUpdated = 0;
                     for (PriceType priceType : options.getPriceTypes()) {
-                        updateProgress(++processed, options.getPriceTypes().size());
-                        if (!priceType.isUpdate()) {
-                            LOG.info("Price {} is skipped", priceType.getName());
-                            continue;
-                        }
-
-                        updateMessage(messageSource.getMessage("ui.processing", new String[]{priceType.getName()}, Locale.getDefault()));
-
-                        Sheet sheet = book.getSheet(priceType.getName());
-                        if (sheet == null) {
-                            LOG.error("Unable to open '{}' sheet in excel", priceType.getName());
-                            continue;
-                        }
-
-                        LOG.info("Processing '{}' data set", priceType.getName());
-                        for (int i = 0; i < sheet.getLastRowNum() + 10; i++) {
-                            Row row = sheet.getRow(i);
-                            if (row == null) {
-                                continue;
-                            }
-                            Cell productIdCell = row.getCell(priceType.getCodeColumn());
-                            if (productIdCell == null || productIdCell.getCellType() != Cell.CELL_TYPE_NUMERIC) {
-                                continue;
-                            }
-
-                            long productId = (long) productIdCell.getNumericCellValue();
-                            double priceValue = row.getCell(priceType.getPriceColumn()).getNumericCellValue();
-                            double oldVat = row.getCell(priceType.getVatColumn()).getNumericCellValue();
-
-                            Pair<Double, Double> oldPrice = getOldPrice(getPriceStatement, productId);
-                            if (oldPrice == null) {
-                                continue;
-                            }
-                            double newPrice = scalePrice(calculatePrice(priceValue, oldVat, options.getNewVat()));
-                            double newMassPrice = scalePrice(calculateMassPrice(newPrice, oldPrice.getValue1()));
-                            updatePriceStatement.setDouble(1, newPrice);
-                            updatePriceStatement.setDouble(2, newMassPrice);
-                            updatePriceStatement.setString(3, String.valueOf(productId));
-                            updatePriceStatement.addBatch();
-
-                            LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, priceValue, oldVat, newPrice, newMassPrice});
-                        }
-                        int[] updated = updatePriceStatement.executeBatch();
-                        for (int e : updated) {
-                            totalUpdated += e;
-                        }
-                        dbConnection.commit();
+                        processPrice(priceType, book, updatePriceStatement, getPriceStatement, dbConnection);
                     }
 
                     updateMessage(messageSource.getMessage("ui.process.finished", new String[]{String.valueOf(totalUpdated)}, Locale.getDefault()));
@@ -120,6 +76,57 @@ public class PriceUpdaterService {
 
                 return 1;
             }
+
+            private void processPrice(PriceType priceType, Workbook book, PreparedStatement updatePriceStatement,
+                PreparedStatement getPriceStatement, Connection dbConnection) throws Exception {
+                updateProgress(processed.incrementAndGet(), options.getPriceTypes().size());
+                if (!priceType.isUpdate()) {
+                    LOG.info("Price {} is skipped", priceType.getName());
+                    return;
+                }
+
+                updateMessage(messageSource.getMessage("ui.processing", new String[]{priceType.getName()}, Locale.getDefault()));
+
+                Sheet sheet = book.getSheet(priceType.getName());
+                if (sheet == null) {
+                    LOG.error("Unable to open '{}' sheet in excel", priceType.getName());
+                    return;
+                }
+
+                LOG.info("Processing '{}' data set", priceType.getName());
+                for (int i = 0; i < sheet.getLastRowNum() + 10; i++) {
+                    Row row = sheet.getRow(i);
+                    if (row == null) {
+                        continue;
+                    }
+                    Cell productIdCell = row.getCell(priceType.getCodeColumn());
+                    if (productIdCell == null || productIdCell.getCellType() != Cell.CELL_TYPE_NUMERIC) {
+                        continue;
+                    }
+
+                    long productId = (long) productIdCell.getNumericCellValue();
+                    double priceValue = row.getCell(priceType.getPriceColumn()).getNumericCellValue();
+                    double oldVat = row.getCell(priceType.getVatColumn()).getNumericCellValue();
+
+                    Pair<Double, Double> oldPrice = getOldPrice(getPriceStatement, productId);
+                    if (oldPrice == null) {
+                        continue;
+                    }
+                    double newPrice = scalePrice(calculatePrice(priceValue, oldVat, options.getNewVat()));
+                    double newMassPrice = scalePrice(calculateMassPrice(newPrice, oldPrice.getValue1()));
+                    updatePriceStatement.setDouble(1, newPrice);
+                    updatePriceStatement.setDouble(2, newMassPrice);
+                    updatePriceStatement.setString(3, String.valueOf(productId));
+                    updatePriceStatement.addBatch();
+
+                    LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, priceValue, oldVat, newPrice, newMassPrice});
+                }
+                int[] updated = updatePriceStatement.executeBatch();
+                for (int e : updated) {
+                    totalUpdated.addAndGet(e);
+                }
+                dbConnection.commit();
+            }
         };
 
         progressBar.progressProperty().bind(task.progressProperty());
@@ -127,7 +134,6 @@ public class PriceUpdaterService {
 
         service.submit(task);
     }
-
 
     private double scalePrice(BigDecimal decimal) {
         return decimal.setScale(2, RoundingMode.HALF_UP).doubleValue();
