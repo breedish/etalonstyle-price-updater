@@ -24,6 +24,8 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.Locale;
+import java.util.OptionalDouble;
+import java.util.OptionalLong;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -96,30 +98,38 @@ public class PriceUpdaterService {
                 LOG.info("Processing '{}' data set", priceType.getName());
                 for (int i = 0; i < sheet.getLastRowNum() + 10; i++) {
                     Row row = sheet.getRow(i);
-                    if (row == null) {
-                        continue;
-                    }
-                    Cell productIdCell = row.getCell(priceType.getCodeColumn());
-                    if (productIdCell == null || productIdCell.getCellType() != Cell.CELL_TYPE_NUMERIC) {
-                        continue;
-                    }
+                    try {
+                        if (row == null) {
+                            continue;
+                        }
+                        Cell productIdCell = row.getCell(priceType.getCodeColumn());
+                        if (productIdCell == null || productIdCell.getCellType() != Cell.CELL_TYPE_NUMERIC) {
+                            continue;
+                        }
 
-                    long productId = (long) productIdCell.getNumericCellValue();
-                    double priceValue = row.getCell(priceType.getPriceColumn()).getNumericCellValue();
-                    double oldVat = row.getCell(priceType.getVatColumn()).getNumericCellValue();
+                        long productId = (long) productIdCell.getNumericCellValue();
+                        OptionalDouble priceValue = getCellNumericValue(row, priceType.getPriceColumn());
+                        OptionalDouble oldVat = getCellNumericValue(row, priceType.getVatColumn());
 
-                    Pair<Double, Double> oldPrice = getOldPrice(getPriceStatement, productId);
-                    if (oldPrice == null) {
-                        continue;
+                        if (!priceValue.isPresent() || !oldVat.isPresent()) {
+                            continue;
+                        }
+
+                        Pair<Double, Double> oldPrice = getOldPrice(getPriceStatement, productId);
+                        if (oldPrice == null) {
+                            continue;
+                        }
+                        double newPrice = scalePrice(calculatePrice(priceValue.getAsDouble(), oldVat.getAsDouble(), options.getNewVat()));
+                        double newMassPrice = scalePrice(calculateMassPrice(newPrice, oldPrice.getValue1()));
+                        updatePriceStatement.setDouble(1, newPrice);
+                        updatePriceStatement.setDouble(2, newMassPrice);
+                        updatePriceStatement.setString(3, String.valueOf(productId));
+                        updatePriceStatement.addBatch();
+
+                        LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, priceValue.getAsDouble(), oldVat.getAsDouble(), newPrice, newMassPrice});
+                    } catch (Exception e) {
+                        LOG.error("Error processing {} at row {}. Reason: {}", new Object[] {priceType.getName(), i, e});
                     }
-                    double newPrice = scalePrice(calculatePrice(priceValue, oldVat, options.getNewVat()));
-                    double newMassPrice = scalePrice(calculateMassPrice(newPrice, oldPrice.getValue1()));
-                    updatePriceStatement.setDouble(1, newPrice);
-                    updatePriceStatement.setDouble(2, newMassPrice);
-                    updatePriceStatement.setString(3, String.valueOf(productId));
-                    updatePriceStatement.addBatch();
-
-                    LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, priceValue, oldVat, newPrice, newMassPrice});
                 }
                 int[] updated = updatePriceStatement.executeBatch();
                 for (int e : updated) {
@@ -133,6 +143,16 @@ public class PriceUpdaterService {
         updateComponent.textProperty().bind(task.messageProperty());
 
         service.submit(task);
+    }
+
+    private OptionalDouble getCellNumericValue(Row row, int cellIndex) {
+        Cell cell = row.getCell(cellIndex);
+        int cellType = cell.getCellType();
+        if (cellType == Cell.CELL_TYPE_ERROR || cellType == Cell.CELL_TYPE_FORMULA || cellType == Cell.CELL_TYPE_BLANK || cellType == Cell.CELL_TYPE_BOOLEAN) {
+            return OptionalDouble.empty();
+        } else {
+            return OptionalDouble.of(cell.getNumericCellValue());
+        }
     }
 
     private double scalePrice(BigDecimal decimal) {
