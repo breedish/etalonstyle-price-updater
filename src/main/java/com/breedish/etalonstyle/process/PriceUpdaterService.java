@@ -1,15 +1,21 @@
 package com.breedish.etalonstyle.process;
 
 import javafx.concurrent.Task;
-import org.apache.poi.ss.usermodel.*;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.text.Text;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.javatuples.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -22,31 +28,30 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Class PriceHandler.
- *
- * @author zenind
+ * Service for {@link com.breedish.etalonstyle.PriceUpdateApp}.
  */
 @Service
-public class PriceHandler implements InitializingBean {
+public class PriceUpdaterService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PriceHandler.class);
+    private static final Logger LOG = LoggerFactory.getLogger(PriceUpdaterService.class);
 
     @Autowired
     private MessageSource messageSource;
 
     private ExecutorService service = Executors.newFixedThreadPool(1);
 
-    @Override
-    public void afterPropertiesSet() throws Exception {
+    @PostConstruct
+    public void init() throws Exception {
         Class.forName("org.firebirdsql.jdbc.FBDriver").newInstance();
     }
 
-    public void process(final UpdateOptions options, final File priceFile, final File dbFile, final ProgressListener listener) {
+    public void process(final UpdateOptions options, final File priceFile, final File dbFile,
+        final Text updateComponent, final ProgressBar progressBar) {
 
         Task<Integer> task = new Task<Integer>() {
             @Override
             protected Integer call() throws Exception {
-                try(final Connection dbConnection = connect(dbFile)) {
+                try (final Connection dbConnection = connect(dbFile)) {
                     final Workbook book = WorkbookFactory.create(priceFile);
                     dbConnection.setAutoCommit(false);
 
@@ -56,8 +61,7 @@ public class PriceHandler implements InitializingBean {
 
                     int processed = 0;
                     int totalUpdated = 0;
-                    for (UpdateOptions.PriceType priceType : options.getPriceTypes()) {
-
+                    for (PriceType priceType : options.getPriceTypes()) {
                         updateProgress(++processed, options.getPriceTypes().size());
                         if (!priceType.isUpdate()) {
                             LOG.info("Price {} is skipped", priceType.getName());
@@ -101,11 +105,13 @@ public class PriceHandler implements InitializingBean {
                             LOG.info("{}: {} - {} {} -> {} {}", new Number[]{i, productId, priceValue, oldVat, newPrice, newMassPrice});
                         }
                         int[] updated = updatePriceStatement.executeBatch();
-                        for (int e : updated) totalUpdated += e;
+                        for (int e : updated) {
+                            totalUpdated += e;
+                        }
                         dbConnection.commit();
                     }
 
-                    updateMessage(messageSource.getMessage("ui.process.finished", new String[] {String.valueOf(totalUpdated)}, Locale.getDefault()));
+                    updateMessage(messageSource.getMessage("ui.process.finished", new String[]{String.valueOf(totalUpdated)}, Locale.getDefault()));
                 } catch (Exception e) {
                     LOG.error("Issue", e);
                     updateMessage(messageSource.getMessage("ui.error", new String[]{e.getMessage().substring(0, 50)}, Locale.getDefault()));
@@ -116,11 +122,12 @@ public class PriceHandler implements InitializingBean {
             }
         };
 
-        listener.getProgressBar().progressProperty().bind(task.progressProperty());
-        listener.getUpdateComponent().textProperty().bind(task.messageProperty());
+        progressBar.progressProperty().bind(task.progressProperty());
+        updateComponent.textProperty().bind(task.messageProperty());
 
         service.submit(task);
     }
+
 
     private double scalePrice(BigDecimal decimal) {
         return decimal.setScale(2, RoundingMode.HALF_UP).doubleValue();
