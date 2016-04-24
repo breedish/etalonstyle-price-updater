@@ -19,12 +19,13 @@
             <plugin>
                 <groupId>com.zenjava</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
-                <version>8.4.0</version>
+                <version>8.1.4</version>
                 <configuration>
+                    <vendor>etalonstyle</vendor>
+                    <verbose>true</verbose>
+                    <needShortcut>true</needShortcut>
+                    <needMenu>true</needMenu>
                     <mainClass>com.breedish.etalonstyle.PriceUpdateApp</mainClass>
-                    <keyStoreAlias>example-user</keyStoreAlias>
-                    <keyStorePassword>example-password</keyStorePassword>
-                    <allPermissions>true</allPermissions>
                 </configuration>
             </plugin>
             <plugin>
